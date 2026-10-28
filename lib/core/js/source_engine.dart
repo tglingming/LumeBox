@@ -20,12 +20,12 @@ import '../session/section.dart';
 import '../util/lume_log.dart';
 import 'lume_js_engine.dart';
 import 'node_mobile_engine.dart';
-import 'sandbox/sandbox_result.dart';
 import '../source/source_package.dart';
 import 'module_script.dart';
 import 'python_source_engine.dart';
 import 'tvbox_source_engine.dart';
 import 'rex_widget.dart';
+import 'sandbox/sandbox.dart';
 
 /// 图源引擎种类。
 enum CatEngineKind {
@@ -154,8 +154,11 @@ class SourceEngineRegistry {
 
   /// 该引擎在本平台是否可用（同步近似：只看登记与平台能力；
   /// Node-Mobile 的原生就绪由 [probe] 异步确认）。
+  ///
+  /// QuickJS 的可用性以沙箱（原生库可加载）为准，不接 LumeJsEngine.isSupported
+  /// ——那是 iOS-only 的 Phase1 板块门，会让 Android 上的猫源引擎被误标不可用。
   static bool isAvailable(CatEngineKind kind) => switch (kind) {
-    CatEngineKind.quickjs => LumeJsEngine.isSupported,
+    CatEngineKind.quickjs => LumeSandbox.isSupported,
     CatEngineKind.nodeMobile => Platform.isAndroid && isRegistered(kind),
   };
 
@@ -183,7 +186,7 @@ class SourceEngineRegistry {
     for (final kind in kinds) {
       switch (kind) {
         case CatEngineKind.quickjs:
-          result[kind] = LumeJsEngine.isSupported;
+          result[kind] = LumeSandbox.isSupported;
         case CatEngineKind.nodeMobile:
           if (!Platform.isAndroid) {
             result[kind] = false;
@@ -217,7 +220,9 @@ class SourceEngineRegistry {
     required Section section,
     bool widgetCompatibility = false,
   }) async {
-    if (!LumeJsEngine.isSupported) return null;
+    // 与 isAvailable 同口径：引擎创建只看沙箱（原生库）是否真的可用，
+    // 不把 iOS-only 的板块门接进来——Android 猫源要靠这里放行。
+    if (!LumeSandbox.isSupported) return null;
     return QuickJsSourceEngine(
       await LumeJsEngine.create(
         sourceId: sourceId,

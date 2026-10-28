@@ -76,17 +76,20 @@ class LumeJsEngine {
   /// 指令计数等安全上限不开放给设置页，调大它们等于关掉防死循环的保护。
   static SandboxPolicy get policy => LumeSandboxSettings.policy;
 
-  /// Phase1 的图源引擎只随 iOS 提供：插件的原生库仅通过 iOS 的
-  /// `DynamicLibrary.process()` 可加载，Android / Windows 按宪法仅保留空页面骨架。
+  /// 图源引擎随 iOS / Android 提供（Windows 仍保留骨架）：QuickJS 原生桥
+  /// 在两个移动端平台都已编入 App（Android 为 libquickjs_c_bridge_plugin.so，
+  /// 经符号探测确认可加载），沙箱可用即视为平台支持。是否开放由这里统一裁决，
+  /// 板块层（LumeSources.runtimeAvailableFor / SourceRegistry）不再各写一套。
   ///
   /// [debugSupportedOverride] 是测试注入点（与 `CatEngines.debugPlatformOverride`
   /// 同一套做法）：测试在原生桥可用的机器上（Windows 需先 `flutter build windows`）
-  /// 把它置 true，就能在非 iOS 平台驱动真实引擎与整条导入链路。
+  /// 把它置 true，就能在 Windows 驱动真实引擎与整条导入链路。
   @visibleForTesting
   static bool? debugSupportedOverride;
 
   static bool get isSupported =>
-      (debugSupportedOverride ?? Platform.isIOS) && LumeSandbox.isSupported;
+      (debugSupportedOverride ?? (Platform.isIOS || Platform.isAndroid)) &&
+      LumeSandbox.isSupported;
 
   /// 创建引擎。一个引擎对应一个隔离沙箱；垫片按板块选择
   /// （猫源专属垫片只进猫源的上下文，见 [LumeSourcePolyfills.forSection]）。
@@ -97,8 +100,12 @@ class LumeJsEngine {
     String bridge = '',
     bool widgetCompatibility = false,
   }) async {
-    if (!isSupported) {
-      throw UnsupportedError('Phase1 源引擎仅随 iOS 提供');
+    // 引擎创建只看沙箱是否真的能建起来；「漫画/视频板块在 Android 维持骨架」
+    // 的 Phase1 口径由板块能力门把守（LumeSources.runtimeAvailableFor /
+    // SourceRegistry._engineAvailable），不在引擎内部再拦一次——否则 Android
+    // 上猫源（平台矩阵里明确支持 QuickJS）会被 iOS-only 的 isSupported 误杀。
+    if (!LumeSandbox.isSupported) {
+      throw UnsupportedError('QuickJS 沙箱不可用（原生库缺失或符号不可解析）');
     }
     // 沙箱身份自带板块前缀（`<板块>:<来源>`），宿主按同一口径校验请求身份，
     // 因此跨板块串线会在第一跳被拒（见 [LumeSourceHost.invoke]）。

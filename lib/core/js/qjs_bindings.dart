@@ -174,7 +174,13 @@ class Qjs {
 
   static List<String> _candidates() {
     if (Platform.isAndroid) {
-      return const <String>['libfastdev_quickjs_runtime.so'];
+      // vendored quickjs_engine 的 CMake 把桥构建为 libquickjs_c_bridge_plugin.so
+      // （源文件叫 libfastdev_quickjs_runtime.cpp，但 OUTPUT_NAME 是后者），
+      // 两个名字都在候选里，真实符号探测做最终判定。
+      return const <String>[
+        'libquickjs_c_bridge_plugin.so',
+        'libfastdev_quickjs_runtime.so',
+      ];
     }
     if (Platform.isWindows) return _windowsCandidates;
     // iOS / macOS / Linux：桥与 quickjs 一起编入进程镜像。
