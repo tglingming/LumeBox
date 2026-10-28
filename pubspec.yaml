@@ -122,6 +122,7 @@ flutter:
     - assets/shaders/comic_glass.frag
   assets:
     - assets/rex/lumebox_demo.js
+    - assets/test_sources/catvod_bridge_source.js
     - assets/reference/
     - assets/js/
     - assets/cat/
