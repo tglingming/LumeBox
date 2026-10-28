@@ -14,13 +14,18 @@ import 'player_settings.dart';
 /// 三者各有自己的解码链（系统 / libmpv / libmdk），因此「某台设备上某个内核
 /// 放不动（例如硬解 HEVC 花屏）」时还有别的选择——这正是留三套的意义。
 ///
-/// 平台边界：Android / Windows 仍只保留骨架（Phase1 优先 iOS），因此除 iOS
-/// 之外的平台统一报告「仅骨架」。
+/// 平台边界：iOS 三套内核全可用；Android 提供 **MPV**（media_kit 的
+/// libmpv 原生库已随 Android 打包，ffmpeg 软解兜底，不依赖系统解码器）；
+/// Windows 仍只保留骨架。
 class PlayerFactory {
   PlayerFactory._();
 
   /// 当前平台是否有可用的播放内核（视频板块的平台门）。
-  static bool get isSupported => isAvailable(PlayerKernel.avplayer);
+  ///
+  /// 判据是「任一内核可用」而不是「AVPlayer 可用」：Android 没有 AVPlayer，
+  /// 但有 MPV——按 AVPlayer 判断会把 Android 误判成骨架平台。
+  static bool get isSupported =>
+      PlayerKernel.values.any((kernel) => isAvailable(kernel));
 
   /// MPV 初始化超时（任务书：8 秒）。
   ///
@@ -53,8 +58,10 @@ class PlayerFactory {
   static bool isAvailable(PlayerKernel kernel) => switch (kernel) {
         // iOS 是主力平台：AVPlayer 与 MPV 都已接入（MPV 的原生库随 iOS 打包）。
         PlayerKernel.avplayer => Platform.isIOS,
-        // MPV 初始化失败过：本次运行不再提供（逃生入口仍可切回 AVPlayer）。
-        PlayerKernel.mpv => Platform.isIOS && !_mpvInitFailed,
+        // Android 只有 MPV：libmpv 原生库随 APK 打包（全 ABI），ffmpeg 软解
+        // 兜底；初始化失败过则本次运行不再提供（逃生入口依赖平台可用内核）。
+        PlayerKernel.mpv =>
+          (Platform.isIOS || Platform.isAndroid) && !_mpvInitFailed,
         // MDK：原生库（libmdk）随 fvp 打包进 iOS；初始化失败过则本次不再提供。
         PlayerKernel.mdk => Platform.isIOS && !_mdkInitFailed,
       };
