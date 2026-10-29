@@ -6,9 +6,24 @@ import 'package:path_provider/path_provider.dart';
 
 enum TextTranslationMode { system, ai, fallback }
 
+/// 设备端（系统）翻译的运行时能力判定。
+///
+/// 系统翻译桥（`lumebox/comicImages` 通道的 `translate`）目前只有 iOS 侧实现
+/// （Apple Translation 框架，iOS 18+）。Android 没有系统翻译 API 接入，
+/// 一律视为不支持：UI 入口据此隐藏「系统翻译」选项，服务层据此快速失败，
+/// 避免每次调用都走到 MissingPluginException 才把 iOS 提示糊给用户。
+/// 将来 Android 接入 ML Kit 等设备端方案时，只需改这一处判定。
+bool systemTranslationSupported({bool? debugOverride}) =>
+    debugOverride ?? Platform.isIOS;
+
 class ComicImageToolsSettings extends ChangeNotifier {
   static final instance = ComicImageToolsSettings();
   static const fileName = 'comic_image_tools.json';
+
+  /// 测试注入点：覆盖 [systemTranslationSupported] 的平台判定，
+  /// 宿主单测无需跑在 Android 上也能验证两条门控分支。
+  @visibleForTesting
+  static bool? debugSystemTranslationSupported;
   bool automatic = false;
   bool upscaleCovers = false;
   bool upscaleVideoPosters = false;
@@ -21,14 +36,37 @@ class ComicImageToolsSettings extends ChangeNotifier {
   bool liveTranslation = false;
   bool ai = false;
   bool aiFallback = false;
-  TextTranslationMode get translationMode => ai
-      ? TextTranslationMode.ai
-      : aiFallback
-      ? TextTranslationMode.fallback
-      : TextTranslationMode.system;
+  /// 读取全局翻译方式；**Android 兼容降级**：
+  ///
+  /// 设备端翻译仅 iOS 提供（见 [systemTranslationSupported]）。存量配置里
+  /// 停在 system 的 Android 用户：已配置 AI 接口 → 直接按 AI 走（联网，
+  /// 语义从「本地」变「联网」，但可用）；未配置 → 保持 system，由服务层
+  /// 快速失败并给出平台感知的提示，而不是每页抛 MissingPluginException。
+  TextTranslationMode get translationMode {
+    final mode = ai
+        ? TextTranslationMode.ai
+        : aiFallback
+        ? TextTranslationMode.fallback
+        : TextTranslationMode.system;
+    final systemSupported =
+        debugSystemTranslationSupported ?? systemTranslationSupported();
+    if (mode == TextTranslationMode.system &&
+        !systemSupported &&
+        endpoint.trim().isNotEmpty) {
+      return TextTranslationMode.ai;
+    }
+    return mode;
+  }
+
+  /// 写入全局翻译方式。Android 不支持 system：调用方 UI 已不展示该选项，
+  /// 这里再做一道兜底——落到 system 的写入按 AI 处理，避免存下一个
+  /// 本平台永远走不通的模式。
   set translationMode(TextTranslationMode value) {
-    ai = value == TextTranslationMode.ai;
-    aiFallback = value == TextTranslationMode.fallback;
+    final systemSupported =
+        debugSystemTranslationSupported ?? systemTranslationSupported();
+    ai = value == TextTranslationMode.ai ||
+        (value == TextTranslationMode.system && !systemSupported);
+    aiFallback = value == TextTranslationMode.fallback && systemSupported;
   }
 
   bool serverTranslation = false;

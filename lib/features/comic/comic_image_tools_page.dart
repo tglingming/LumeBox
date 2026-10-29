@@ -478,14 +478,35 @@ class _SettingsState extends State<ComicImageToolsSettingsPage> {
               const SettingsFooterNote(
                 '首页标题、搜索结果、漫画对白与圈选文字共用此设置。AI 配置和目标语言只需填写一次。',
               ),
-              choice('全局翻译方式', settings.translationMode, {
-                TextTranslationMode.system: '系统翻译（本地）',
-                TextTranslationMode.ai: 'AI 翻译（联网）',
-                TextTranslationMode.fallback: '系统失败后用 AI 补译',
-              }, (v) => settings.translationMode = v),
+              // Android 存量配置可能仍停在 system（无 AI 接口时降级策略保留
+              // 该值），而 system 不在 Android 的选项里——DropdownButton 的
+              // value 不在 items 中会抛异常，这里兜底到 AI 展示。
+              Builder(
+                builder: (context) {
+                  final modeOptions = <TextTranslationMode, String>{
+                    // 设备端翻译仅 iOS 提供：Android 不展示 system /
+                    // fallback 选项（fallback 的第一步就是系统翻译）。
+                    if (systemTranslationSupported()) ...{
+                      TextTranslationMode.system: '系统翻译（本地）',
+                      TextTranslationMode.fallback: '系统失败后用 AI 补译',
+                    },
+                    TextTranslationMode.ai: 'AI 翻译（联网）',
+                  };
+                  return choice(
+                    '全局翻译方式',
+                    modeOptions.containsKey(settings.translationMode)
+                        ? settings.translationMode
+                        : TextTranslationMode.ai,
+                    modeOptions,
+                    (v) => settings.translationMode = v,
+                  );
+                },
+              ),
               SettingsFooterNote(switch (settings.translationMode) {
                 TextTranslationMode.system =>
-                  '本模式在设备上翻译文字，不调用 AI 接口。首次使用可能需要下载系统语言包。',
+                  systemTranslationSupported()
+                      ? '本模式在设备上翻译文字，不调用 AI 接口。首次使用可能需要下载系统语言包。'
+                      : '设备端翻译仅 iOS 提供。请改用 AI 翻译（联网），或在下方配置翻译接口。',
                 TextTranslationMode.ai => '本模式直接把待翻译文字发送给下方配置的 AI 接口，不先调用系统翻译；成功译文缓存到本机。网络失败时保留原文，可重试未完成条目。',
                 TextTranslationMode.fallback =>
                   '先使用系统翻译；只有失败、不支持或未译出的外文才发送给 AI 补译。成功译文保留，AI 不可用时保留原文。',

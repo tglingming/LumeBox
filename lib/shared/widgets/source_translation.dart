@@ -112,7 +112,9 @@ class _SourceTranslationActionState extends State<SourceTranslationAction> {
   }
 
   String errorText(Object error) => error is MissingPluginException
-      ? '设备端翻译需要 iOS 18 或以上'
+      ? (systemTranslationSupported()
+            ? '设备端翻译需要 iOS 18 或以上'
+            : '设备端翻译仅 iOS 提供，请改用 AI 翻译')
       : error is FormatException
       ? error.message.toString()
       : error is PlatformException

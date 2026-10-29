@@ -229,6 +229,17 @@ class TextTranslationService extends ChangeNotifier {
               )
               .toList();
           if (pending.isNotEmpty) {
+            // 设备端翻译的平台门放在触碰原生通道**之前**：Android 上
+            // system 模式没有桥可跑，每次调用都走到 MissingPluginException
+            // 才把「需要 iOS 18」糊给用户——这里提前失败，文案平台感知。
+            // 调用方显式注入了 native 翻译器（using/translator）视为已通过
+            // 运行时能力检测（例如将来 Android 接入 ML Kit），不在此拦截。
+            final hasCustomNative = using != null || translator != null;
+            if (selectedMode == TextTranslationMode.system &&
+                !hasCustomNative &&
+                !systemTranslationSupported()) {
+              throw const FormatException('设备端翻译仅 iOS 提供，请改用 AI 翻译');
+            }
             PlatformException? partial;
             late final List<String> values;
             try {
