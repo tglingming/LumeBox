@@ -10,6 +10,13 @@ import 'package:lume_box/core/translation/text_translation.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  // 本文件验证翻译服务语义（缓存键、补译策略、持久化），与平台门无关；
+  // 宿主不是 iOS，注入支持标记让 system/fallback 路径保持原有语义。
+  // 平台门控本身由 test/android_translation_gate_test.dart 覆盖。
+  setUp(() => ComicImageToolsSettings.debugSystemTranslationSupported = true);
+  tearDown(
+    () => ComicImageToolsSettings.debugSystemTranslationSupported = null,
+  );
   test(
     'legacy unchanged cache entries cannot suppress a fresh translation',
     () async {

@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -11,6 +12,21 @@ import 'module_glass_scope.dart';
 
 /// Shared material for cards, navigation and overlays; media content stays intact.
 class FrostedGlassWidget extends StatefulWidget {
+  /// 实时模糊（BackdropFilter）的平台门：Android 不做。
+  ///
+  /// iOS 走原生玻璃（根本不进这个分支）；Android 没有系统级模糊可用，
+  /// BackdropFilter 会让底下的画面**每一帧**都重算一次全屏高斯模糊——
+  /// 阅读器打开与翻页时 controls 压在滚动画面上，这正是 Android 上
+  /// 「打开漫画卡顿」的主要源头。Android 一律降级为纯色半透明材质。
+  ///
+  /// [debugLiveBlurOverride] 是测试注入点：置 true/false 可驱动两条渲染
+  /// 分支，不受平台限制。
+  @visibleForTesting
+  static bool? debugLiveBlurOverride;
+
+  static bool get _liveBlurSupported =>
+      debugLiveBlurOverride ?? !Platform.isAndroid;
+
   const FrostedGlassWidget({
     super.key,
     this.blur = 18,
@@ -133,8 +149,16 @@ class _FrostedGlassWidgetState extends State<FrostedGlassWidget> {
                     .68 *
                     widget.materialOpacity)
                 .clamp(0.0, 1.0);
+      final liveBlur =
+          enabled && widget.blur > 0 && FrostedGlassWidget._liveBlurSupported;
       final fill = enabled
-          ? tint.withValues(alpha: alpha)
+          ? tint.withValues(
+              // 无实时模糊（Android）时底色调实一档：没有模糊衬托，太透的
+              // 面板在亮画面上托不住文字；.58（translucentOverlay 上限）→ .82。
+              alpha: liveBlur
+                  ? alpha
+                  : (alpha / .58 * .64 + .18).clamp(0.0, .88),
+            )
           : base.withValues(alpha: 1);
       final materialAlpha = widget.materialOpacity.clamp(0.0, 1.0);
       final saturation =
@@ -177,7 +201,7 @@ class _FrostedGlassWidgetState extends State<FrostedGlassWidget> {
         ),
       );
       Widget background = ColoredBox(color: fill);
-      if (enabled && widget.blur > 0) {
+      if (liveBlur) {
         background = BackdropFilter(filter: filter, child: background);
       }
       return Listener(

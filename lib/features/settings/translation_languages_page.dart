@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/reading/comic_image_tools_settings.dart';
 import '../../core/translation/translation_languages.dart';
 import '../../shared/widgets/glass_card.dart';
 import 'settings_ui.dart';
@@ -49,7 +50,9 @@ class _TranslationLanguagesPageState extends State<TranslationLanguagesPage>
   String _message(Object error) => error is PlatformException
       ? error.message ?? '语言包操作失败，请重试'
       : error is MissingPluginException
-      ? '系统翻译语言包需要 iOS 18 或以上'
+      ? (systemTranslationSupported()
+            ? '系统翻译语言包需要 iOS 18 或以上'
+            : '系统语言包仅 iOS 提供；Android 请使用 AI 翻译')
       : '无法读取语言包状态，请重试';
 
   Future<void> _reload() async {
