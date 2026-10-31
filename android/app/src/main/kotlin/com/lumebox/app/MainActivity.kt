@@ -1,6 +1,8 @@
 package com.lumebox.app
 
 import android.app.Activity
+import android.content.Context
+import android.content.IntentFilter
 import android.os.BatteryManager
 import android.view.KeyEvent
 import android.content.Intent
@@ -37,15 +39,31 @@ class MainActivity : AudioServiceActivity() {
         }
         DanmakuCredentials.register(this, engine.dartExecutor.binaryMessenger)
         super.configureFlutterEngine(engine)
+        // 阅读器状态栏 / 视频播放器的电量胶囊：iOS 侧已实现同名通道，
+        // Android 这里补齐（读自身电量无需任何运行时权限）。
+        // 覆盖上游的简化实现：属性返回 0 的机型回退粘性广播换算，
+        // 异常与越界一律 success(null)，Dart 侧按「未知电量」渲染。
         MethodChannel(engine.dartExecutor.binaryMessenger, "lumebox/battery")
             .setMethodCallHandler { call, result ->
-                if (call.method != "level") {
-                    result.notImplemented()
-                    return@setMethodCallHandler
+                when (call.method) {
+                    "level" -> {
+                        try {
+                            val bm = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+                            // BATTERY_PROPERTY_CAPACITY 个别机型返回 0，回退到粘性广播换算。
+                            var value = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+                            if (value !in 1..100) {
+                                val intent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+                                val raw = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+                                val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+                                if (raw >= 0 && scale > 0) value = raw * 100 / scale
+                            }
+                            result.success(if (value in 0..100) value else null)
+                        } catch (error: Exception) {
+                            result.success(null)
+                        }
+                    }
+                    else -> result.notImplemented()
                 }
-                val manager = getSystemService(BATTERY_SERVICE) as? BatteryManager
-                val level = manager?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
-                result.success(level?.takeIf { it in 0..100 })
             }
         IntroRecognition(this, engine.dartExecutor.binaryMessenger)
         MethodChannel(engine.dartExecutor.binaryMessenger, "lumebox/app_icon")
