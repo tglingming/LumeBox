@@ -1,6 +1,9 @@
 package com.lumebox.app
 
 import android.app.Activity
+import android.content.Context
+import android.content.IntentFilter
+import android.os.BatteryManager
 import android.view.KeyEvent
 import android.content.Intent
 import android.content.ComponentName
@@ -37,6 +40,30 @@ class MainActivity : AudioServiceActivity() {
         DanmakuCredentials.register(this, engine.dartExecutor.binaryMessenger)
         super.configureFlutterEngine(engine)
         IntroRecognition(this, engine.dartExecutor.binaryMessenger)
+        // 阅读器状态栏 / 视频播放器的电量胶囊：iOS 侧已实现同名通道，
+        // Android 这里补齐（读自身电量无需任何运行时权限）。
+        MethodChannel(engine.dartExecutor.binaryMessenger, "lumebox/battery")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "level" -> {
+                        try {
+                            val bm = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+                            // BATTERY_PROPERTY_CAPACITY 个别机型返回 0，回退到粘性广播换算。
+                            var value = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+                            if (value !in 1..100) {
+                                val intent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+                                val raw = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+                                val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+                                if (raw >= 0 && scale > 0) value = raw * 100 / scale
+                            }
+                            result.success(if (value in 0..100) value else null)
+                        } catch (error: Exception) {
+                            result.success(null)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
         MethodChannel(engine.dartExecutor.binaryMessenger, "lumebox/app_icon")
             .setMethodCallHandler { call, result ->
                 val names = listOf("default", "Aurora", "Obsidian", "Solar", "Orbit", "Prism", "Spark")
