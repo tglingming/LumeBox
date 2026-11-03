@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.IntentFilter
 import android.os.BatteryManager
 import android.view.KeyEvent
+import android.view.WindowManager
+import android.webkit.CookieManager
 import android.content.Intent
 import android.content.ComponentName
 import android.content.pm.PackageManager
@@ -28,6 +30,36 @@ class MainActivity : AudioServiceActivity() {
     }
     private var exportResult: MethodChannel.Result? = null
     private var exportBytes: ByteArray? = null
+
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        unlockHighRefreshRate()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        unlockHighRefreshRate()
+    }
+
+    /// 解锁高刷新率：三星等厂商默认把非白名单应用限制在 60Hz，
+    /// 这里主动请求屏幕支持的最高刷新率 DisplayMode（minSdk 26，直接可用）。
+    /// 与现有 configureFlutterEngine 里的各通道完全正交，不做任何重写。
+    private fun unlockHighRefreshRate() {
+        try {
+            val display = window.windowManager.defaultDisplay ?: return
+            val mode = display.supportedModes
+                .filter { it.physicalWidth == display.mode.physicalWidth && it.physicalHeight == display.mode.physicalHeight }
+                .maxByOrNull { it.refreshRate } ?: return
+            if (mode.modeId != display.mode.modeId) {
+                val params = window.attributes
+                params.preferredDisplayModeId = mode.modeId
+                window.attributes = params
+            }
+        } catch (_: Exception) {
+            // 刷新率请求失败不影响任何功能：系统按默认策略走。
+        }
+    }
+
     override fun configureFlutterEngine(engine: FlutterEngine) {
         readerKeys = MethodChannel(engine.dartExecutor.binaryMessenger, "lumebox/reader_keys").also { channel ->
             channel.setMethodCallHandler { call, result ->
@@ -66,6 +98,80 @@ class MainActivity : AudioServiceActivity() {
                 }
             }
         IntroRecognition(this, engine.dartExecutor.binaryMessenger)
+        // 阅读器亮度独立调节（iOS 侧已实现同名通道）：screenBrightness 只影响
+        // 本 Activity 窗口，退出阅读器由 Dart 侧调 current/重置。
+        MethodChannel(engine.dartExecutor.binaryMessenger, "lumebox/brightness")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "isSupported" -> result.success(true)
+                    "set" -> {
+                        try {
+                            val value = (call.argument<Double>("value") ?: -1.0).toFloat()
+                            val lp = window.attributes
+                            lp.screenBrightness = if (value <= 0f) WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                            else value.coerceIn(0.01f, 1.0f)
+                            window.attributes = lp
+                            result.success(null)
+                        } catch (error: Exception) {
+                            result.error("brightness", error.message, null)
+                        }
+                    }
+                    "current" -> result.success(window.attributes.screenBrightness.takeIf { it >= 0f })
+                    else -> result.notImplemented()
+                }
+            }
+        // 多任务防窥（iOS 侧已实现同名通道）：FLAG_SECURE 让任务切换卡与
+        // 截屏不显示应用内容；app 锁开启时由 Dart 侧调用。
+        MethodChannel(engine.dartExecutor.binaryMessenger, "lumebox/privacy")
+            .setMethodCallHandler { call, result ->
+                if (call.method != "setEnabled") { result.notImplemented(); return@setMethodCallHandler }
+                try {
+                    if (call.argument<Boolean>("enabled") == true) {
+                        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                    } else {
+                        window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                    }
+                    result.success(null)
+                } catch (error: Exception) {
+                    result.error("privacy", error.message, null)
+                }
+            }
+        // WAF 校验的 HttpOnly Cookie 补充源（iOS 侧为 WKWebView 仓库）。
+        // android.webkit.CookieManager.getCookie 会返回包括 HttpOnly 在内的
+        // 整串 Cookie；逐枚的 domain/path/expires 元数据 Android 拿不到，
+        // 按当前 URL 合成（host 精确匹配 + 路径 /），Dart 侧过滤逻辑兼容。
+        MethodChannel(engine.dartExecutor.binaryMessenger, "lumebox/webview")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "allCookies" -> {
+                        try {
+                            val url = call.arguments as? Map<*, *>
+                            val target = url?.get("url") as? String ?: ""
+                            val uri = android.net.Uri.parse(target)
+                            val host = (uri.host ?: "").lowercase()
+                            val raw = if (host.isEmpty()) null
+                            else CookieManager.getInstance().getCookie(target)
+                            val secure = target.startsWith("https")
+                            val list = raw?.split("; ")?.mapNotNull { pair ->
+                                val at = pair.indexOf('=')
+                                if (at <= 0) null else mapOf(
+                                    "name" to pair.substring(0, at).trim(),
+                                    "value" to pair.substring(at + 1).trim(),
+                                    "domain" to host,
+                                    "path" to "/",
+                                    "secure" to secure,
+                                    "httpOnly" to true,
+                                    "expires" to null,
+                                )
+                            } ?: emptyList()
+                            result.success(list)
+                        } catch (error: Exception) {
+                            result.success(emptyList<Any>())
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
         MethodChannel(engine.dartExecutor.binaryMessenger, "lumebox/app_icon")
             .setMethodCallHandler { call, result ->
                 val names = listOf("default", "Aurora", "Obsidian", "Solar", "Orbit", "Prism", "Spark")
