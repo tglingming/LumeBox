@@ -107,7 +107,7 @@ class PlayerFactory {
       PlayerKernel.aether => AetherPlayer(),
       // MPV：libmpv（media_kit）绑定挡在端口后面，上层只认 AbstractPlayer。
       PlayerKernel.mpv => MpvPlayer(
-        engine: MediaKitMpvEngine.create(title: 'Lume Box'),
+        engine: MediaKitMpvEngine.create(title: 'LumeiXiang'),
         engineLabel: kernel.label,
       ),
       // MDK：libmdk 绑定（fvp）挡在 MdkEngine 后面，上层只认 AbstractPlayer。

@@ -93,7 +93,7 @@ class _StartupGateState extends State<StartupGate> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const Text(
-                    'LumeBox',
+                    'LumeiXiang',
                     style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 24),

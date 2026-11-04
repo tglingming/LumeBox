@@ -583,7 +583,7 @@ class AvPlayer extends AbstractPlayer implements PresentationEngine {
   Widget buildView() {
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) {
-      return const Center(child: Text('Lume Box'));
+      return const Center(child: Text('LumeiXiang'));
     }
     return AspectRatio(
       aspectRatio: controller.value.aspectRatio,

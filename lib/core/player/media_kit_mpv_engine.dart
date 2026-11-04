@@ -86,7 +86,7 @@ class MediaKitMpvEngine
     // 第二步：初始化完成之后才允许创建 Player。
     final player = Player(
       configuration: PlayerConfiguration(
-        title: title ?? 'Lume Box',
+        title: title ?? 'LumeiXiang',
         libass: true,
         // 日志交给宿主日志层：media_kit 自己的控制台输出关掉。
         logLevel: MPVLogLevel.error,

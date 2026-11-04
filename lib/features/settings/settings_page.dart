@@ -605,7 +605,7 @@ class _BuildInfoRowState extends State<_BuildInfoRow> {
   Widget build(BuildContext context) {
     return SettingsEntryCard(
       icon: Icons.info_outline,
-      title: '关于 LumeBox',
+      title: '关于 LumeiXiang',
       subtitle: _line,
       showChevron: false,
       marginBottom: 0,
