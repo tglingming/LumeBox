@@ -71,6 +71,47 @@ class MainActivity : AudioServiceActivity() {
         }
         DanmakuCredentials.register(this, engine.dartExecutor.binaryMessenger)
         super.configureFlutterEngine(engine)
+        // 本地凭证加密的根密钥（LocalCipher / SectionDatabase 依赖）：
+        // iOS 走钥匙串、Windows 走 DPAPI；Android 用 AndroidKeyStore 包裹——
+        // 首次生成 32 字节随机密钥，用 Keystore 内的 AES-GCM 密钥加密后落盘，
+        // 根密钥本身不可从 Keystore 导出。返回给 Dart 的是明文密钥（base64）。
+        MethodChannel(engine.dartExecutor.binaryMessenger, "lumebox/source_repository")
+            .setMethodCallHandler { call, result ->
+                if (call.method != "storageKey") { result.notImplemented(); return@setMethodCallHandler }
+                try {
+                    val alias = "lumebox_storage_wrap"
+                    val keyStore = java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+                    if (!keyStore.containsAlias(alias)) {
+                        val generator = javax.crypto.KeyGenerator.getInstance("AES", "AndroidKeyStore")
+                        generator.init(android.security.keystore.KeyGenParameterSpec.Builder(
+                            alias,
+                            android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or android.security.keystore.KeyProperties.PURPOSE_DECRYPT,
+                        )
+                            .setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM)
+                            .setEncryptionPaddings(android.security.keystore.KeyProperties.ENCRYPTION_PADDING_NONE)
+                            .setKeySize(256)
+                            .build())
+                        generator.generateKey()
+                    }
+                    val secretKey = keyStore.getKey(alias, null) as javax.crypto.SecretKey
+                    val file = java.io.File(filesDir, "storage_wrap.bin")
+                    val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+                    val wrapped: ByteArray
+                    if (file.exists()) {
+                        val blob = file.readBytes()
+                        cipher.init(javax.crypto.Cipher.DECRYPT_MODE, secretKey,
+                            javax.crypto.spec.GCMParameterSpec(128, blob.copyOfRange(0, 12)))
+                        wrapped = cipher.doFinal(blob.copyOfRange(12, blob.size))
+                    } else {
+                        wrapped = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
+                        cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, secretKey)
+                        file.writeBytes(cipher.iv + cipher.doFinal(wrapped))
+                    }
+                    result.success(android.util.Base64.encodeToString(wrapped, android.util.Base64.NO_WRAP))
+                } catch (error: Exception) {
+                    result.error("storageKey", error.message, null)
+                }
+            }
         // 阅读器状态栏 / 视频播放器的电量胶囊：iOS 侧已实现同名通道，
         // Android 这里补齐（读自身电量无需任何运行时权限）。
         // 覆盖上游的简化实现：属性返回 0 的机型回退粘性广播换算，

@@ -309,11 +309,20 @@ class _ExploreViewState extends State<ExploreView>
   }
 
   void _onLayoutChanged() {
-    if (mounted) setState(() {});
+    // 这些通知可能在其它组件 build 期间同步到达（页签保活重建 /
+    // ModuleUiScale.ensure），直接 setState 会撞「build 期间标脏」。
+    // 统一推迟到帧尾执行。
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   void _onSubscriptionsChanged() {
-    if (mounted) unawaited(_bootstrap());
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_bootstrap());
+    });
   }
 
   @override
@@ -329,7 +338,10 @@ class _ExploreViewState extends State<ExploreView>
   }
 
   void _mediaChanged() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override

@@ -35,7 +35,10 @@ class LocalCipher {
     final directory = await getApplicationSupportDirectory();
     final future = _pending.putIfAbsent(directory.path, () async {
       Uint8List key;
-      if (Platform.isIOS) {
+      if (Platform.isIOS || Platform.isAndroid) {
+        // iOS：钥匙串直存；Android：随机密钥由 AndroidKeyStore 内的
+        // AES-GCM 根密钥加密落盘（MainActivity 的 storageKey 实现），
+        // Keystore 根密钥本身不可导出。
         final value = await const MethodChannel('lumebox/source_repository')
             .invokeMethod<String>('storageKey');
         if (value == null) throw StateError('无法读取本机安全存储密钥');
